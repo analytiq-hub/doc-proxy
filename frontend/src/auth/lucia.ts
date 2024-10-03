@@ -14,14 +14,21 @@ const Session = db.collection("sessions") as Collection<SessionDoc>;
 
 const adapter = new MongodbAdapter(Session, User);
 
-interface UserDoc {
-  _id: string;
-}
+export const lucia = new Lucia(adapter, {
+	sessionCookie: {
+		// this sets cookies with super long expiration
+		// since Next.js doesn't allow Lucia to extend cookie expiration when rendering pages
+		expires: false,
+		attributes: {
+			// set to `true` when using HTTPS
+			secure: process.env.NODE_ENV === "production"
+		}
+	}
+});
 
-interface SessionDoc {
-  _id: string;
-  expires_at: Date;
-  user_id: string;
+// IMPORTANT!
+declare module "lucia" {
+	interface Register {
+		Lucia: typeof lucia;
+	}
 }
-
-export const auth = new Lucia({ adapter });
