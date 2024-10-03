@@ -1,5 +1,5 @@
 import React from 'react';
-import DataGrid, { Column } from 'react-data-grid';
+import { GridColDef, DataGrid } from '@mui/x-data-grid';
 import { Button } from '@mui/material';
 
 interface File {
@@ -15,15 +15,20 @@ interface FileListProps {
 }
 
 const FileList: React.FC<FileListProps> = ({ files, onDownload }) => {
-  const columns: Column<File>[] = [
-    { key: 'filename', name: 'Filename' },
-    { key: 'upload_date', name: 'Upload Date' },
-    { key: 'uploaded_by', name: 'Uploaded By' },
+  const columns: GridColDef[] = [
+    { field: 'filename', headerName: 'Filename' },
+    { field: 'upload_date', headerName: 'Upload Date' },
+    { field: 'uploaded_by', headerName: 'Uploaded By' },
     {
-      key: 'actions',
-      name: 'Actions',
-      formatter: ({ row }) => (
-        <Button variant="contained" size="small" onClick={() => onDownload(row.id)}>
+      field: 'actions',
+      headerName: 'Actions',
+      width: 120,
+      renderCell: (params) => (
+        <Button 
+          variant="contained" 
+          size="small" 
+          onClick={() => onDownload(params.row.id)}
+        >
           Download
         </Button>
       ),
