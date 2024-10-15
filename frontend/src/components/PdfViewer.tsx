@@ -19,90 +19,69 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
+type PDFState = {
+  file: string | null;
+  loading: boolean;
+  error: string | null;
+};
+
+const initializePDF = async (id: string): Promise<PDFState> => {
+  try {
+    const response = await downloadFileApi(id);
+    const blob = new Blob([response], { type: 'application/pdf' });
+    const fileURL = URL.createObjectURL(blob);
+    return { file: fileURL, loading: false, error: null };
+  } catch (error) {
+    console.error('Error fetching PDF for id:', id, error);
+    return { file: null, loading: false, error: 'Failed to load PDF. Please try again.' };
+  }
+};
+
 const PDFViewer = ({ id }: { id: string }) => {
+  const [{ file, loading, error }, setPDFState] = useState<PDFState>(() => ({
+    file: null,
+    loading: true,
+    error: null,
+  }));
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [error, setError] = useState<string | null>(null);
-  const [file, setFile] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [scale, setScale] = useState(1);
-  const [rotation, setRotation] = useState(0);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  // Use a fileRef to store the file URL, which doesn't trigger re-renders when it changes.
-  // The cleanup function now uses this ref to revoke the URL.
-  //This approach resolves the dependency warning without causing unnecessary re-renders.
   const fileRef = useRef<string | null>(null);
-
-  // This is a tricky effect hook. It needs to clean up
-  // the file URL when the component unmounts. The hook cleanup can be called while
-  // the hook is still running, for example, before the axios request completes.
-  // We handle this by checking if isMounted is true before setting the file URL.
-  useEffect(() => {
-    let isMounted = true;
-    //console.log('PDF effect running for id:', id);
-
-    const fetchPDF = async () => {
-      try {
-        //console.log('Fetching PDF for id:', id);
-        const response = await downloadFileApi(id);
-        //console.log('PDF download complete for id:', id);
-        const blob = new Blob([response], { type: 'application/pdf' });
-        const fileURL = URL.createObjectURL(blob);
-        if (isMounted) {
-          setFile(fileURL);
-          fileRef.current = fileURL;
-          setLoading(false);
-          //console.log('PDF loaded successfully for id:', id);
-        } else {
-          //console.log('Component unmounted before PDF could be set, cleaning up');
-          if (fileURL) {
-            URL.revokeObjectURL(fileURL);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching PDF for id:', id, error);
-        if (isMounted) {
-          setError('Failed to load PDF. Please try again.');
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchPDF();
-
-    return () => {
-      // The hook cleanup function - called when the component unmounts.
-      // It can be called while the hook is still running.
-      
-      //console.log('PDF effect cleaning up for id:', id);
-      isMounted = false;
-      if (fileRef.current) {
-        URL.revokeObjectURL(fileRef.current);
-        //console.log('PDF unloaded from state for id:', id);
-      }
-      
-      setFile(null);
-    };
-  }, [id]);
-
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  const scrollToPage = useCallback((pageNum: number) => {
-    if (pageRefs.current[pageNum - 1]) {
-      pageRefs.current[pageNum - 1]?.scrollIntoView({ behavior: 'smooth' });
+  useState(() => {
+    initializePDF(id).then(newState => {
+      setPDFState(newState);
+      if (newState.file) {
+        fileRef.current = newState.file;
+      }
+    });
+  });
+
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    if (fileRef.current) {
+      URL.revokeObjectURL(fileRef.current);
+      fileRef.current = null;
     }
+    setPDFState(prev => ({ ...prev, file: null }));
   }, []);
 
+  // Use effect for cleanup on unmount
   useEffect(() => {
-    scrollToPage(pageNumber);
-  }, [pageNumber, scrollToPage]);
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
+
+  const [scale, setScale] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [inputPageNumber, setInputPageNumber] = useState('1');
 
   const handleLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     setPageNumber(1);
-    pageRefs.current = new Array(numPages).fill(null);
     
     // Get the first page to calculate dimensions
     pdfjs.getDocument(file!).promise.then((pdf) => {
@@ -114,7 +93,7 @@ const PDFViewer = ({ id }: { id: string }) => {
   };
 
   const handleLoadError = (error: { message: string }) => {
-    setError(error.message);
+    setPDFState(prev => ({ ...prev, error: error.message }));
     console.error('PDF Load Error:', error);
   };
 
@@ -158,8 +137,6 @@ const PDFViewer = ({ id }: { id: string }) => {
       setScale(adjustedScale);
     }
   }, [pdfDimensions]);
-
-  const [inputPageNumber, setInputPageNumber] = useState('1');
 
   const handlePageNumberChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setInputPageNumber(event.target.value);
